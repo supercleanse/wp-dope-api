@@ -12,8 +12,13 @@ Copyright: 2004-2013, Blair Williams
 
 if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');}
 
+define('WPDAPI_SLUG','api');
+
 class WpDopeApi() {
+  public $slug;
+
   public function __construct() {
+    $this->slug = WPDAPI_SLUG;
     // Add initialization and activation hooks
     add_action('init', array($this,'init'));
   }
@@ -21,42 +26,38 @@ class WpDopeApi() {
   public function init() {
     add_filter('rewrite_rules_array', array($this,'rewrites'));
   }
+
+  public function action($name) {
+    return "{$this->slug}-{$name}";
+  }
   
-  function rewrites($wp_rules) {
-    $base = get_option('base', 'api');
-    if (empty($base)) {
+  public function rewrites($wp_rules) {
+    if (empty($this->slug))
       return $wp_rules;
-    }
+
     $rules = array(
-      "$base\$" => 'index.php?json=info',
-      "$base/(.+)\$" => 'index.php?json=$matches[1]'
+      "{$this->slug}\$" => 'wp-admin/admin-ajax.php?action='.$this->action('info'),
+      "{$this->slug}/(.+)\$" => 'wp-admin/admin-ajax.php?action='.$this->slug.'-$matches[1]'
     );
     return array_merge($rules, $wp_rules);
   }
-  
-  function dir() {
-    if (defined('JSON_API_DIR') && file_exists(JSON_API_DIR)) {
-      return JSON_API_DIR;
-    } else {
-      return dirname(__FILE__);
-    }
-  }
 
-  function wpdapi_activation() {
+  public function activation() {
     // Add the rewrite rule on activation
     global $wp_rewrite;
-    add_filter('rewrite_rules_array', 'rewrites');
+    add_filter('rewrite_rules_array', array($this,'rewrites'));
     $wp_rewrite->flush_rules();
   }
   
-  function wpdapi_deactivation() {
+  public function deactivation() {
     // Remove the rewrite rule on deactivation
     global $wp_rewrite;
     $wp_rewrite->flush_rules();
   }
-register_activation_hook("$dir/json-api.php", 'activation');
-register_deactivation_hook("$dir/json-api.php", 'deactivation');
-
 }
 
-new WpDopeApi();
+$wpdapi = new WpDopeApi();
+
+register_activation_hook("$dir/json-api.php", array($wpdapi,'activation'));
+register_deactivation_hook("$dir/json-api.php", array($wpdapi,'deactivation'));
+
