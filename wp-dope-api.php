@@ -12,13 +12,16 @@ Copyright: 2004-2013, Blair Williams
 
 if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');}
 
-define('WPDAPI_SLUG','api');
+define('WPDAPI_URL_SLUG','api');
+define('WPDAPI_PLUGIN_SLUG',plugin_basename(__FILE__));
+define('WPDAPI_PLUGIN_NAME',dirname(WPDAPI_PLUGIN_SLUG));
+define('WPDAPI_PATH',WP_PLUGIN_DIR.'/'.WPDAPI_PLUGIN_NAME);
 
 class WpDopeApi() {
   public $slug;
 
   public function __construct() {
-    $this->slug = WPDAPI_SLUG;
+    $this->slug = WPDAPI_URL_SLUG;
     // Add initialization and activation hooks
     add_action('init', array($this,'init'));
   }
@@ -58,6 +61,6 @@ class WpDopeApi() {
 
 $wpdapi = new WpDopeApi();
 
-register_activation_hook("$dir/json-api.php", array($wpdapi,'activation'));
-register_deactivation_hook("$dir/json-api.php", array($wpdapi,'deactivation'));
+register_activation_hook(WPDAPI_PLUGIN_SLUG, array($wpdapi,'activation'));
+register_deactivation_hook(WPDAPI_PLUGIN_SLUG, array($wpdapi,'deactivation'));
 
