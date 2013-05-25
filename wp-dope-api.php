@@ -12,16 +12,17 @@ Copyright: 2004-2013, Blair Williams
 
 if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');}
 
-define('WPDAPI_URL_SLUG','api');
-define('WPDAPI_PLUGIN_SLUG',plugin_basename(__FILE__));
-define('WPDAPI_PLUGIN_NAME',dirname(WPDAPI_PLUGIN_SLUG));
-define('WPDAPI_PATH',WP_PLUGIN_DIR.'/'.WPDAPI_PLUGIN_NAME);
+define('DAPI_URL_SLUG','api');
+define('DAPI_PLUGIN_SLUG',plugin_basename(__FILE__));
+define('DAPI_PLUGIN_NAME',dirname(DAPI_PLUGIN_SLUG));
+define('DAPI_PATH',WP_PLUGIN_DIR.'/'.DAPI_PLUGIN_NAME);
+define('DAPI_CONTROLLERS_PATH',DAPI_PATH.'/controllers');
 
 class WpDopeApi() {
   public $slug;
 
   public function __construct() {
-    $this->slug = WPDAPI_URL_SLUG;
+    $this->slug = DAPI_URL_SLUG;
     // Add initialization and activation hooks
     add_action('init', array($this,'init'));
   }
@@ -57,10 +58,24 @@ class WpDopeApi() {
     global $wp_rewrite;
     $wp_rewrite->flush_rules();
   }
+
+  public static function register_api_endpoint($controller, $action, $callback) {
+    add_action("wp_ajax_{$this->slug}-{$controller}-{$action}", $callback);
+  }
 }
 
-$wpdapi = new WpDopeApi();
+$dapi = new WpDopeApi();
 
-register_activation_hook(WPDAPI_PLUGIN_SLUG, array($wpdapi,'activation'));
-register_deactivation_hook(WPDAPI_PLUGIN_SLUG, array($wpdapi,'deactivation'));
+$controllers = @glob( DAPI_CONTROLLERS_PATH . '/*', GLOB_NOSORT );
+foreach( $controllers as $controller ) {
+  $class = preg_replace( '#\.php#', '', basename($controller) );
+  if( preg_match( '#WpDapi.*Controller#', $class ) ) {
+    include_once( $controller );
+    $obj = new $class;
+  }
+}
 
+
+
+register_activation_hook(DAPI_PLUGIN_SLUG, array($dapi,'activation'));
+register_deactivation_hook(DAPI_PLUGIN_SLUG, array($dapi,'deactivation'));
