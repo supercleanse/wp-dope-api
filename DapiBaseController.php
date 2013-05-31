@@ -3,9 +3,11 @@ if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');
 
 class DapiBaseController {
   public $dapi;
+  public $supported_formats;
 
   public function __construct($dapi) {
     $this->dapi = $dapi;
+    $this->supported_formats = array('json','xml');
   }
 
   public function authenticate($auth_types='basic') {
@@ -16,11 +18,12 @@ class DapiBaseController {
       return $this->basic_auth();
   }
 
+  // Used to validate required arguments to be passed to the api endpoint
   public function required_args($args=array()) {
     if(!is_array($args))
       $args = array($args);
 
-    $diff = array_diff( $args, $_REQUEST );
+    $diff = array_diff( $args, array_keys($_REQUEST) );
 
     if( !empty($diff) ) {
       header('HTTP/1.0 403 Forbidden');
@@ -28,6 +31,7 @@ class DapiBaseController {
     }
   }
 
+  // Used to enforce acceptable http methods for the api endpoint
   public function accepted_http_methods($args='get') {
     if(!is_array($args))
       $args = array($args);
@@ -55,13 +59,23 @@ class DapiBaseController {
     }
   }
 
-  public function render( $struct ) {
-    if(!isset($_REQUEST['format']))
-      $format = 'json';
-    else
-      $format = $_REQUEST['format'];
+  // Uses the wp_query object to determine the format of the response
+  private function format() {
+    global $wp_query;
 
-    switch( $format ) {
+    if( isset($wp_query->query) and
+        isset($wp_query->query['format']) and
+        in_array( $wp_query->query['format'], $this->supported_formats ) ) {
+      return $wp_query->query['format'];
+    }
+    
+    // Default response format
+    return 'json';
+  }
+
+  // Main rendering method ... it selects the correct function to render based on the format
+  public function render( $struct ) {
+    switch( $this->format() ) {
       case 'json':
         $this->render_json( $struct );
         break;
@@ -74,6 +88,7 @@ class DapiBaseController {
     }
   }
 
+  // Kicks out an unauthorized message and returns the appropriate HTTP response code
   public function render_unauthorized($message) {
     if($this->dapi->auth=='basic')
       header('WWW-Authenticate: Basic realm="' . get_option('blogname') . '"');
@@ -82,6 +97,7 @@ class DapiBaseController {
     die(sprintf(__('UNAUTHORIZED: %s', 'wp-dope-api'),$message));
   }
 
+  // Render a structure as json
   public function render_json($struct,$filename='') {
     header('Content-Type: text/json');
 
@@ -91,6 +107,7 @@ class DapiBaseController {
     die(json_encode($struct));
   }
 
+  // Render a structure as xml
   public function render_xml($struct,$filename='') {
     header('Content-Type: text/xml');
     
@@ -100,6 +117,7 @@ class DapiBaseController {
     die(DapiUtils::to_xml($struct));
   }
 
+  // Used to determine whether the dope api is in debug mode
   public function is_debug() {
     if(defined('DAPI_DEBUG'))
       return DAPI_DEBUG;

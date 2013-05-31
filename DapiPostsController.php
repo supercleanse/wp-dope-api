@@ -19,7 +19,7 @@ class DapiPostsController extends DapiBaseController {
     $this->render(array('posts' => $posts));
   }
 
-  /** List all posts **/
+  /** Create a new post **/
   public function new_post() {
     $this->accepted_http_methods('post');
     $user = $this->authenticate('basic');
