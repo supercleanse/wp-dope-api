@@ -3,11 +3,9 @@ if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');
 
 class DapiBaseController {
   public $dapi;
-  public $supported_formats;
 
   public function __construct($dapi) {
     $this->dapi = $dapi;
-    $this->supported_formats = array('json','xml');
   }
 
   public function authenticate($auth_types='basic') {
@@ -64,8 +62,7 @@ class DapiBaseController {
     global $wp_query;
 
     if( isset($wp_query->query) and
-        isset($wp_query->query['format']) and
-        in_array( $wp_query->query['format'], $this->supported_formats ) ) {
+        isset($wp_query->query['format']) ) {
       return $wp_query->query['format'];
     }
     
@@ -75,16 +72,19 @@ class DapiBaseController {
 
   // Main rendering method ... it selects the correct function to render based on the format
   public function render( $struct ) {
-    switch( $this->format() ) {
+    switch( $format = $this->format() ) {
       case 'json':
         $this->render_json( $struct );
+        break;
+      case 'jsonp':
+        $this->render_jsonp( $struct );
         break;
       case 'xml':
         $this->render_xml( $struct );
         break;
       default:
         header('HTTP/1.0 403 Forbidden');
-        die(sprintf( __('The %s format isn\'t supported.', 'wp-dope-api'), $format ) );
+        die(sprintf( __('The %s format isn\'t supported.', 'wp-dope-api'), esc_html($format) ) );
     }
   }
 
@@ -105,6 +105,18 @@ class DapiBaseController {
       header("Content-Disposition: attachment; filename=\"{$filename}.json\"");
 
     die(json_encode($struct));
+  }
+
+  // Render a structure as jsonp
+  public function render_jsonp($struct,$filename='') {
+    // JSONP needs a callback argument to act properly
+    $this->required_args('callback');
+    $callback = $_REQUEST['callback'];
+
+    $json = json_encode($struct);
+
+    header('Content-Type: application/javascript');
+    die("{$callback}({$json})");
   }
 
   // Render a structure as xml
