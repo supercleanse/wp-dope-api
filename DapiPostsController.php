@@ -5,6 +5,7 @@ class DapiPostsController extends DapiBaseController {
   public function __construct($dapi) {
     parent::__construct($dapi);
     $dapi->register_api_endpoint('posts', array($this, 'posts'));
+    $dapi->register_api_endpoint('my-posts', array($this, 'my_posts'));
     $dapi->register_api_endpoint('new-post', array($this, 'new_post'));
   }
 
@@ -15,6 +16,15 @@ class DapiPostsController extends DapiBaseController {
     //$this->required_args(); // no required args
      
     $posts = get_posts(array('numberposts' => -1));
+    
+    $this->render(array('posts' => $posts));
+  }
+
+  public function my_posts() {
+    $this->accepted_http_methods('get');
+    $user = $this->authenticate('basic');
+
+    $posts = get_posts(array('numberposts' => -1, 'author' => $user->ID));
     
     $this->render(array('posts' => $posts));
   }
