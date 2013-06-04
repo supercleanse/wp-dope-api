@@ -11,7 +11,7 @@ class DapiUtils {
    * @param SimpleXMLElement $xml - should only be used recursively
    * @return string XML
    */
-  public static function to_xml($data, $root_node_name='dopeData', $xml=null, $parent_node_name='') {
+  public static function to_xml($data, $root_node_name='wordpress', $xml=null, $parent_node_name='') {
     // turn off compatibility mode as simple xml throws a wobbly if you don't.
     if(ini_get('zend.ze1_compatibility_mode') == 1)
       ini_set('zend.ze1_compatibility_mode', 0);

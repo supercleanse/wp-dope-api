@@ -3,7 +3,7 @@
 Plugin Name: WP Dope API
 Plugin URI: http://www.blairwilliams.com/
 Description: A dope example of creating a WordPress based API bro
-Version: 0.0.1
+Version: 0.0.2
 Author: Blair Williams
 Author URI: http://blairwilliams.com/
 Text Domain: wp-dope-api
@@ -14,19 +14,22 @@ if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');
 
 // These can be overriden in wp-config.php for now
 // These can be moved to a wp-admin page
-if(!defined('DAPI_URL_SLUG')) { define('DAPI_URL_SLUG', 'dapi'); }
+if(!defined('DAPI_URL_SLUG')) { define('DAPI_URL_SLUG', 'api'); }
 if(!defined('DAPI_AUTH_METHOD')) { define('DAPI_AUTH_METHOD', 'basic'); }
 if(!defined('DAPI_DEBUG')) { define('DAPI_DEBUG',true); }
 
 define('DAPI_PLUGIN_SLUG',plugin_basename(__FILE__));
 define('DAPI_PLUGIN_NAME',dirname(DAPI_PLUGIN_SLUG));
 define('DAPI_PATH',WP_PLUGIN_DIR.'/'.DAPI_PLUGIN_NAME);
+define('DAPI_LIB_PATH',DAPI_PATH.'/lib');
+define('DAPI_CONTROLLERS_PATH',DAPI_PATH.'/controllers');
 
-/** This class sets everything up ... from rewrites, to autoloading, and endpoints **/
+/** This class sets everything up ... from rewrites, to autoloading, and routes **/
 class WpDopeApi {
   public $slug;
   public $auth;
-  public $endpoints;
+  public $routes;
+  public $regexes;
   public $query_vars;
   public $rules;
 
@@ -34,26 +37,36 @@ class WpDopeApi {
     // This could easily be configured from the wp-admin
     $this->slug = DAPI_URL_SLUG; // This is the base slug that the api will be accessible from
     $this->auth = DAPI_AUTH_METHOD; // This is the type of authentication we'll be using
-    $this->endpoints = array(); // initialize the endpoints array
+    $this->routes = array(); // initialize the routes array
     $this->query_vars = array( 'plugin', 'action', 'format' );
-    $this->rules = array(
-      "{$this->slug}\$" => 'index.php?plugin=dapi&action=posts&format=json',
-      "{$this->slug}/([^/]+)\.([^/]+)\$" => 'index.php?plugin=dapi&action=$matches[1]&format=$matches[2]',
-      "{$this->slug}/([^/]+)\$" => 'index.php?plugin=dapi&action=$matches[1]&format=json'
-    );
-   
-    // Add initialization and activation hooks
+    $this->rules = array();
+  }
+
+  public function load_hooks() {
     add_action('init', array($this,'init'));
     add_filter('template_include', array($this,'route'));
     add_filter('query_vars', array($this, 'query_vars'));
     add_filter('redirect_canonical', array($this, 'unslashit'), 10, 2);
   }
 
+  public function controller_dirs() {
+    return apply_filters('dapi-controller-dirs',array(DAPI_CONTROLLERS_PATH));
+  }
+
   // Autoload all the requisite classes
   public function autoloader($class_name) {
     if(preg_match('/^Dapi.+$/', $class_name)) {
-      $filepath = DAPI_PATH . "/{$class_name}.php";
-      if(file_exists($filepath)) { require_once($filepath); }
+      if( $class_name != 'DapiBaseController' and
+          preg_match('/Controller$/',$class_name) ) {
+        foreach($this->controller_dirs() as $dir) {
+          $filepath = $dir . "/{$class_name}.php";
+          if(file_exists($filepath)) { require_once($filepath); }
+        }
+      }
+      else {
+        $filepath = DAPI_LIB_PATH . "/{$class_name}.php";
+        if(file_exists($filepath)) { require_once($filepath); }
+      }
     }
   }
 
@@ -89,17 +102,22 @@ class WpDopeApi {
   private function is_valid_route() {
     global $wp_query;
 
+    $req_method = strtolower( $_SERVER['REQUEST_METHOD'] );
+
     return ( isset($wp_query->query) and isset($wp_query->query['plugin']) and
              $wp_query->query['plugin']=='dapi' and isset($wp_query->query['action']) and
-             in_array($wp_query->query['action'],array_keys($this->endpoints)) );
+             in_array($wp_query->query['action'],array_keys($this->routes)) and
+             isset($this->routes[$wp_query->query['action']][$req_method]) );
   }
 
-  // Route the api endpoints based one wordpress' query system
+  // Route the api routes based one wordpress' query system
   public function route($template) {
     global $wp_query;
 
     if( $this->is_valid_route() ) {
-      @call_user_func($this->endpoints[$wp_query->query['action']]);
+      $action = $wp_query->query['action'];
+      $req_method = strtolower($_SERVER['REQUEST_METHOD']);
+      @call_user_func($this->routes[$action][$req_method]);
       exit;
     }
     else if( isset($wp_query->query) and
@@ -118,7 +136,7 @@ class WpDopeApi {
     add_filter('rewrite_rules_array', array($this,'rewrites'));
     $wp_rewrite->flush_rules();
   }
-  
+
   // Remove custom rules and flush them on deactivation
   public function deactivation() {
     // Remove the rewrite rule on deactivation
@@ -126,9 +144,51 @@ class WpDopeApi {
     $wp_rewrite->flush_rules();
   }
 
-  // This registers the api endpoint with Wp Dope API
-  public function register_api_endpoint($action, $callback) {
-    $this->endpoints[$action] = $callback;
+  // This registers the api route with Wp Dope API
+  public function register_route($method, $action, $callback) {
+    $method = strtolower($method);
+    $slug = $this->action_slug($action);
+    if(!isset($this->routes[$slug])) {
+      $this->routes[$slug] = array();
+      $this->compile_action($action);
+    }
+
+    $this->routes[$slug][$method] = $callback;
+  }
+
+  protected function action_slug($action) {
+    $regex = preg_replace('!/:([^/]+)!','/([^/]+)',$action);
+    return md5($regex);
+  }
+
+  // Sets up the query args and rules for each route
+  protected function compile_action($action) {
+    $slug = $this->action_slug($action);
+    preg_match_all('!/:([^/]+)!',$action,$matches);
+
+    // Add these variables directly to query_vars for WP to process accordingly
+    if(isset($matches[1])) {
+      $this->query_vars = array_merge( $this->query_vars, $matches[1] );
+      $match_count = count($matches[1]);
+    }
+    else
+      $match_count = 0;
+
+    // Refactor matches to build query string
+    $query_str = '';
+    for( $i = 0; $i < $match_count; $i++ ) {
+      $mi = $i+1;
+      $query_str .= "&{$matches[1][$i]}=\$matches[{$mi}]";
+    }
+
+    // Match index for the format string
+    $format_index = ( $match_count + 1 );
+
+    // figure out regexes for our new rules
+    $regex = preg_replace('!/:([^/]+)!','/([^/]+)',$action);
+    $this->rules = array_merge( $this->rules, array(
+      "{$this->slug}{$regex}\.([^/]+)\$" => "index.php?plugin=dapi&action={$slug}{$query_str}&format=\$matches[{$format_index}]",
+      "{$this->slug}{$regex}\$" => "index.php?plugin=dapi&action={$slug}{$query_str}&format=json" ) );
   }
 }
 
@@ -143,18 +203,19 @@ if( is_array(spl_autoload_functions()) and
 spl_autoload_register( array( $dapi, 'autoloader' ) );
 
 // Dynamically load the controllers ... other than the BaseController
-$controllers = @glob( DAPI_PATH . '/Dapi*Controller.php', GLOB_NOSORT );
-foreach( $controllers as $controller ) {
-  $classname = preg_replace( '#\.php#', '', basename($controller) );
-  if( preg_match( '#DapiBaseController#', $classname ) ) {
-    continue;
-  }
-  else if( preg_match( '#Dapi.*Controller#', $classname ) ) {
-    include_once($controller);
-    $rc = new ReflectionClass($classname);
-    $rc->newInstanceArgs(array($dapi));
+foreach($dapi->controller_dirs() as $dir) {
+  $controllers = @glob( $dir . '/Dapi*Controller.php', GLOB_NOSORT );
+  foreach( $controllers as $controller ) {
+    $classname = preg_replace( '#\.php#', '', basename($controller) );
+    if( preg_match( '#Dapi.*Controller#', $classname ) ) {
+      include_once($controller);
+      $rc = new ReflectionClass($classname);
+      $rc->newInstanceArgs(array($dapi));
+    }
   }
 }
+
+$dapi->load_hooks();
 
 // Hook up the activation / deactivation hooks
 register_activation_hook(DAPI_PLUGIN_SLUG, array($dapi,'activation'));

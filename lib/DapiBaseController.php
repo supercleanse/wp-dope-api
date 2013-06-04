@@ -8,7 +8,7 @@ class DapiBaseController {
     $this->dapi = $dapi;
   }
 
-  public function authenticate($auth_types='basic') {
+  protected function authenticate($auth_types='basic') {
     if(!is_array($auth_types))
       $auth_types = array($auth_types);
 
@@ -16,8 +16,18 @@ class DapiBaseController {
       return $this->basic_auth();
   }
 
-  // Used to validate required arguments to be passed to the api endpoint
-  public function required_args($args=array()) {
+  // Used to determine whether a user is "authorized" or not
+  protected function authorize($user_id,$caps) {
+    if(!is_array($caps)) { $caps = array($caps); }
+
+    foreach($caps as $cap) {
+      if(!user_can($user_id,$cap))
+        $this->render_forbidden();
+    }
+  }
+
+  // Used to validate required arguments to be passed to the api route
+  protected function required_args($args=array()) {
     if(!is_array($args))
       $args = array($args);
 
@@ -29,22 +39,8 @@ class DapiBaseController {
     }
   }
 
-  // Used to enforce acceptable http methods for the api endpoint
-  public function accepted_http_methods($args='get') {
-    if(!is_array($args))
-      $args = array($args);
-
-    $req_method = strtolower( $_SERVER['REQUEST_METHOD'] );
-
-    if( !in_array( $req_method,
-                   array_map( create_function( '$method', 'return strtolower($method);' ), $args ) ) ) {
-      header( 'HTTP/1.0 405 Method Not Allowed' );
-      die( sprintf( __( '%s requests are not accepted by this url', 'wp-dope-api' ), $req_method ) );
-    }
-  }
-
   /** This authenticates the wordpress user with basic authentication */
-  public function basic_auth() {
+  protected function basic_auth() {
     if(!isset($_SERVER['PHP_AUTH_USER']))
       $this->render_unauthorized(__('No credentials have been provided.', 'wp-dope-api'));
     else {
@@ -58,7 +54,7 @@ class DapiBaseController {
   }
 
   // Uses the wp_query object to determine the format of the response
-  private function format() {
+  protected function format() {
     global $wp_query;
 
     if( isset($wp_query->query) and
@@ -71,7 +67,7 @@ class DapiBaseController {
   }
 
   // Main rendering method ... it selects the correct function to render based on the format
-  public function render( $struct ) {
+  protected function render( $struct ) {
     switch( $format = $this->format() ) {
       case 'json':
         $this->render_json( $struct );
@@ -89,7 +85,7 @@ class DapiBaseController {
   }
 
   // Kicks out an unauthorized message and returns the appropriate HTTP response code
-  public function render_unauthorized($message) {
+  protected function render_unauthorized($message) {
     if($this->dapi->auth=='basic')
       header('WWW-Authenticate: Basic realm="' . get_option('blogname') . '"');
 
@@ -97,8 +93,14 @@ class DapiBaseController {
     die(sprintf(__('UNAUTHORIZED: %s', 'wp-dope-api'),$message));
   }
 
+  // Used when the given user doesn't have access to perform the action
+  protected function render_forbidden() {
+    header('HTTP/1.0 403 Forbidden');
+    die(_e('This user does not have the capability to perform this action', 'wp-dope-api'));
+  }
+
   // Render a structure as json
-  public function render_json($struct,$filename='') {
+  protected function render_json($struct,$filename='') {
     header('Content-Type: text/json');
 
     if(!$this->is_debug() and !empty($filename))
@@ -108,7 +110,7 @@ class DapiBaseController {
   }
 
   // Render a structure as jsonp
-  public function render_jsonp($struct,$filename='') {
+  protected function render_jsonp($struct,$filename='') {
     // JSONP needs a callback argument to act properly
     $this->required_args('callback');
     $callback = $_REQUEST['callback'];
@@ -120,7 +122,7 @@ class DapiBaseController {
   }
 
   // Render a structure as xml
-  public function render_xml($struct,$filename='') {
+  protected function render_xml($struct,$filename='') {
     header('Content-Type: text/xml');
     
     if(!$this->is_debug() and !empty($filename))
@@ -130,11 +132,8 @@ class DapiBaseController {
   }
 
   // Used to determine whether the dope api is in debug mode
-  public function is_debug() {
-    if(defined('DAPI_DEBUG'))
-      return DAPI_DEBUG;
-    else
-      return false;
+  protected function is_debug() {
+    return ( defined('DAPI_DEBUG') ? DAPI_DEBUG : false );
   }
 }
 
