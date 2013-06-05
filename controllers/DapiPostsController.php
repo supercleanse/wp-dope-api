@@ -2,13 +2,12 @@
 if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');}
 
 class DapiPostsController extends DapiBaseController {
-  public function __construct($dapi) {
-    parent::__construct($dapi);
-    $dapi->register_route('get',    '/posts',    array($this, 'all'));
-    $dapi->register_route('get',    '/post/:id', array($this, 'one'));
-    $dapi->register_route('post',   '/post',     array($this, 'create'));
-    $dapi->register_route('post',   '/post/:id', array($this, 'update'));
-    $dapi->register_route('delete', '/post/:id', array($this, 'delete'));
+  public function routes() {
+    $this->dapi->register_route('get',    '/posts',    array($this, 'all'));
+    $this->dapi->register_route('get',    '/post/:id', array($this, 'one'));
+    $this->dapi->register_route('post',   '/post',     array($this, 'create'));
+    $this->dapi->register_route('post',   '/post/:id', array($this, 'update'));
+    $this->dapi->register_route('delete', '/post/:id', array($this, 'delete'));
   }
 
   /** List all posts **/

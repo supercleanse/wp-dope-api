@@ -1,12 +1,14 @@
 <?php
 if(!defined('ABSPATH')) {die('You are not allowed to call this page directly.');}
 
-class DapiBaseController {
+abstract class DapiBaseController {
   public $dapi;
 
   public function __construct($dapi) {
     $this->dapi = $dapi;
   }
+
+  abstract public function routes();
 
   protected function authenticate($auth_types='basic') {
     if(!is_array($auth_types))

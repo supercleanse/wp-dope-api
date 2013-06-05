@@ -210,7 +210,8 @@ foreach($dapi->controller_dirs() as $dir) {
     if( preg_match( '#Dapi.*Controller#', $classname ) ) {
       include_once($controller);
       $rc = new ReflectionClass($classname);
-      $rc->newInstanceArgs(array($dapi));
+      $obj = $rc->newInstanceArgs(array($dapi));
+      $obj->routes();
     }
   }
 }
